@@ -1,16 +1,39 @@
+/*
+ * ============================================================================
+ *  Laborator SSI — Trafic în CLAR (HTTP) vs. CRIPTAT (HTTPS)
+ *  Universitatea "Aurel Vlaicu" din Arad — Securitatea Sistemelor Informatice
+ * ============================================================================
+ *
+ *  ATENȚIE: Aplicație INTENȚIONAT NESECURIZATĂ, construită exclusiv pentru
+ *  laborator, într-un mediu controlat. NU o expuneți public pe internet și
+ *  NU introduceți date reale (parole personale, carduri etc.).
+ *
+ *  Ce face:
+ *   - Pornește un server HTTP (fără TLS) pe portul 8080.
+ *   - Dacă există certificate self-signed în ./certs, pornește ȘI un server
+ *     HTTPS pe 8443, pentru comparație directă în Wireshark.
+ *   - Oferă 3 formulare care trimit date pe care studenții le vor "vâna"
+ *     în captura de pachete: login (POST), mesaj de contact (POST) și
+ *     căutare (GET — pentru a arăta expunerea în query string / URL).
+ *   - Fiecare login include un "secret" ascuns (token) pe care studenții
+ *     trebuie să îl găsească în fluxul TCP. Bun pentru notare.
+ * ============================================================================
+ */
+
 const express = require('express');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 
 const app = express();
 
 // Parsează corpul formularelor (application/x-www-form-urlencoded).
 app.use(express.urlencoded({ extended: true }));
 
-const HTTP_PORT = process.env.HTTP_PORT || 8080;
+const HTTP_PORT = process.env.HTTP_PORT || 8000;
 const HTTPS_PORT = process.env.HTTPS_PORT || 8443;
 
 // Token-ul "secret" pe care studenții îl caută în captură. Se regenerează
@@ -23,6 +46,8 @@ const SECRET_TOKEN = 'SSI-LAB-' + crypto.randomBytes(4).toString('hex').toUpperC
 function pagina(req, continut) {
   const protocol = req.secure ? 'HTTPS (criptat)' : 'HTTP (în clar)';
   const culoare = req.secure ? '#1b7f3b' : '#b91c1c';
+  const ipClient = clientIp(req);
+  const ipServer = serverIps().join(', ');
   return `<!doctype html>
 <html lang="ro">
 <head>
@@ -47,6 +72,9 @@ function pagina(req, continut) {
              background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
     .ok { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px;
           padding: 14px; }
+    .ipinfo { background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px;
+              padding: 12px 14px; font-size: .9rem; margin-bottom: 20px; }
+    .ipinfo p { margin: 4px 0; }
     code { background: #f3f4f6; padding: 2px 5px; border-radius: 4px; }
   </style>
 </head>
@@ -55,6 +83,12 @@ function pagina(req, continut) {
   <div class="banner">
     Conexiune curentă: <span class="proto">${protocol}</span>.
     Aplicație de laborator, intenționat nesecurizată. Nu folosiți date reale.
+  </div>
+  <div class="ipinfo">
+    <p><strong>IP-ul tău</strong> (pune-l în filtrul Wireshark <code>ip.addr == ...</code>):
+       <code>${escapeHtml(ipClient)}</code></p>
+    <p><strong>IP server</strong> (din URL-ul pe care îl accesezi):
+       <code>${escapeHtml(ipServer)}</code></p>
   </div>
   ${continut}
 </body>
@@ -151,6 +185,26 @@ function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// IP-ul clientului, așa cum îl vede serverul (sursa conexiunii TCP).
+function clientIp(req) {
+  let ip = req.socket.remoteAddress || '';
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7); // IPv4 „mapat" în IPv6
+  if (ip === '::1') ip = '127.0.0.1 (localhost)';
+  return ip || 'necunoscut';
+}
+
+// Adresele IPv4 ne-interne ale serverului (cele pe care le folosesc studenții).
+function serverIps() {
+  const out = [];
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const i of ifaces[name] || []) {
+      if (i.family === 'IPv4' && !i.internal) out.push(`${i.address} (${name})`);
+    }
+  }
+  return out.length ? out : ['127.0.0.1 (doar localhost)'];
 }
 
 function log(req, tip, date) {
