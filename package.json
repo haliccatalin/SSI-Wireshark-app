@@ -1,0 +1,13 @@
+{
+  "name": "ssi-lab-http-sniffing",
+  "version": "1.0.0",
+  "description": "Aplicatie demonstrativa pentru laborator SSI: trafic HTTP in clar vs HTTPS criptat",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "license": "MIT"
+}
